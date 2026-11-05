@@ -505,6 +505,116 @@ test('which folders and files are scanned, and in which order', () => {
   assert.equal(r.sources.uses, 7);
 });
 
+test('extensions are matched in lower case only, and exactly', () => {
+  const files = {
+    'ok.js': 'process.env.E_JS;',
+    'ok.jsx': 'process.env.E_JSX;',
+    'ok.mjs': 'process.env.E_MJS;',
+    'ok.cjs': 'process.env.E_CJS;',
+    'ok.ts': 'process.env.E_TS;',
+    'ok.tsx': 'process.env.E_TSX;',
+    'ok.mts': 'process.env.E_MTS;',
+    'ok.cts': 'process.env.E_CTS;',
+    'ok.py': 'import os\nos.getenv("E_PY")',
+    'ok.go': 'package main\nvar a = os.Getenv("E_GO")',
+    'ok.rb': "a = ENV['E_RB']",
+    'ok.php': '<?php\n$a = getenv("E_PHP");',
+    'ok.sh': 'echo "$E_SH"',
+    'A.JS': 'process.env.NO_UPPER_JS;',
+    'b.Py': 'import os\nos.getenv("NO_MIXED_PY")',
+    'c.Ts': 'process.env.NO_MIXED_TS;',
+    'd.SH': 'echo "$NO_UPPER_SH"',
+    'e.PHP': '<?php getenv("NO_UPPER_PHP");',
+    'f.Mjs': 'process.env.NO_MIXED_MJS;',
+    'data.json': 'process.env.NO_JSON;',
+    'x.mjsx': 'process.env.NO_MJSX;',
+    'x.ts.bak': 'process.env.NO_TSBAK;',
+    'x.js.map': 'process.env.NO_JSMAP;',
+    'x.jsonc': 'process.env.NO_JSONC;',
+    'x.pyc': 'process.env.NO_PYC;',
+    'x.gox': 'process.env.NO_GOX;',
+    'js': 'process.env.NO_JUST_JS;',
+    'py': 'import os\nos.getenv("NO_JUST_PY")',
+    'sh': 'echo "$NO_JUST_SH"',
+    'dir.js/inner.txt': 'process.env.NO_IN_JS_NAMED_DIR;',
+  };
+  const r = usesOf(files);
+  const got = names(r.undocumented);
+  assert.deepEqual(
+    got,
+    ['E_CJS', 'E_CTS', 'E_GO', 'E_JS', 'E_JSX', 'E_MJS', 'E_MTS', 'E_PHP', 'E_PY', 'E_RB', 'E_SH', 'E_TS', 'E_TSX'],
+  );
+  assert.equal(r.sources.files, 13);
+});
+
+test('skipped folders and dot-folders are not entered at any depth', () => {
+  const files = {
+    'ok.js': 'process.env.D_TOP;',
+    'a/b/ok.js': 'process.env.D_DEEP;',
+    'a/node_modules/x.js': 'process.env.NO_1;',
+    'a/b/vendor/x.js': 'process.env.NO_2;',
+    'a/b/c/dist/x.js': 'process.env.NO_3;',
+    'a/build/x.js': 'process.env.NO_4;',
+    'a/b/coverage/x.js': 'process.env.NO_5;',
+    'a/__pycache__/x.py': 'import os\nos.getenv("NO_6")',
+    'a/.cache/x.js': 'process.env.NO_7;',
+    'a/b/.git/x.js': 'process.env.NO_8;',
+    'a/b/c/.hidden/deep/x.js': 'process.env.NO_9;',
+    '.top/x.js': 'process.env.NO_10;',
+    'node_modules/y/z/x.js': 'process.env.NO_11;',
+    // similar names that are not skipped
+    'a/node_modules2/x.js': 'process.env.D_NM2;',
+    'a/Vendor/x.js': 'process.env.D_CASE;',
+    'a/builds/x.js': 'process.env.D_BUILDS;',
+    'a/my.dist/x.js': 'process.env.D_MYDIST;',
+  };
+  const r = usesOf(files);
+  assert.deepEqual(names(r.undocumented), ['D_BUILDS', 'D_CASE', 'D_DEEP', 'D_MYDIST', 'D_NM2', 'D_TOP']);
+  assert.equal(r.sources.files, 6);
+});
+
+test('symbolic links give no names: to a file, to a folder, inside or outside, or to nothing', (t) => {
+  const dir = project({ '.env.example': '', 'real.js': 'process.env.L_REAL;', 'sub/inner.js': 'process.env.L_INNER;' });
+  const other = project({ 'out.js': 'process.env.NO_OUT_FILE;', 'od/o.js': 'process.env.NO_OUT_DIR;' });
+  try {
+    symlinkSync(join(other, 'out.js'), join(dir, 'link-out.js'));
+    symlinkSync(join(dir, 'real.js'), join(dir, 'link-in.js'));
+    symlinkSync(join(other, 'od'), join(dir, 'link-outdir'), 'junction');
+    symlinkSync(join(dir, 'sub'), join(dir, 'link-indir'), 'junction');
+    symlinkSync(join(dir, 'sub'), join(dir, 'sub', 'loop'), 'junction');
+    symlinkSync(join(dir, 'nothing-here.js'), join(dir, 'dangling.js'));
+    symlinkSync(join(dir, 'nothing-dir'), join(dir, 'dangling-dir'), 'junction');
+    symlinkSync(join(other, 'od', 'o.js'), join(dir, 'sub', 'deep-link.js'));
+  } catch {
+    t.skip('symbolic links cannot be made on this platform');
+    return;
+  }
+  const r = report(dir);
+  assert.deepEqual(names(r.undocumented), ['L_INNER', 'L_REAL']);
+  assert.equal(r.sources.files, 2);
+  assert.equal(r.sources.uses, 2);
+});
+
+test('files are taken in code unit order of their relative paths', () => {
+  // first use of a name belongs to the first file in the order
+  const files = {
+    'b.js': 'process.env.O_X;',
+    'a/z.js': 'process.env.O_X;',
+    'a.js': 'process.env.O_X;',
+    'a-b.js': 'process.env.O_X;',
+    'C.js': 'process.env.O_X;',
+    'Z/y.js': 'process.env.O_X;',
+    'é.js': 'process.env.O_X;',
+  };
+  const r = usesOf(files);
+  assert.deepEqual(r.undocumented, [{ name: 'O_X', file: 'C.js', line: 1, column: 13, uses: 7 }]);
+  // each file in turn is the first one when the ones before it are gone
+  const order = ['C.js', 'Z/y.js', 'a-b.js', 'a.js', 'a/z.js', 'b.js', 'é.js'];
+  const pairs = order.map((f) => [f, `process.env.${'P' + order.indexOf(f)};`]);
+  const r2 = usesOf(Object.fromEntries(pairs.map(([f, c]) => [f, c + '\nprocess.env.SAME;'])));
+  assert.equal(r2.undocumented.find((x) => x.name === 'SAME').file, 'C.js');
+});
+
 test('first use inside a file is the one that starts first, even a destructuring key', () => {
   const src = 'const { Y } = process.env;\nprocess.env.Y;\n';
   const r = usesOf({ 'a.js': src });

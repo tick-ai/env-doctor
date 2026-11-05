@@ -347,8 +347,7 @@ const LANG_BY_EXT = [
 ];
 
 function langOf(name) {
-  const lower = name.toLowerCase();
-  for (const [ext, lang] of LANG_BY_EXT) if (lower.endsWith(ext)) return lang;
+  for (const [ext, lang] of LANG_BY_EXT) if (name.endsWith(ext)) return lang;
   return null;
 }
 
