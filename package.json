@@ -1,0 +1,22 @@
+{
+  "name": "env-doctor",
+  "version": "0.1.0",
+  "description": "Lists the environment variables your code uses that your .env.example and .env files miss, and never prints a value.",
+  "type": "module",
+  "bin": {
+    "env-doctor": "env-doctor.mjs"
+  },
+  "files": ["env-doctor.mjs", "README.md", "LICENSE"],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": ["env", "dotenv", "environment-variables", "ci", "lint", "cli"],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tick-ai/env-doctor.git"
+  }
+}
